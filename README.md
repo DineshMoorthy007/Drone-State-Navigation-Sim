@@ -1,5 +1,10 @@
 # Autonomous Drone Landing System
 
+[![ROS 2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
+[![Gazebo](https://img.shields.io/badge/Gazebo-Simulation-F58113)](https://gazebosim.org/)
+[![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-brightgreen)](LICENSE)
+
 A 3D simulation environment that demonstrates a fully autonomous drone tracking and landing precisely on the **center of a moving base**. Built with **ROS2** and **Gazebo**, the system employs a strict four-state machine — Wandering, Searching, Landing, and Dwelling — combined with precision control algorithms to achieve stable, repeatable autonomous landings in dynamic environments.
 
 ---
@@ -37,33 +42,58 @@ Ensure the following software is installed on your system before proceeding:
 
 ## Installation
 
-1. **Clone the repository** into your ROS2 workspace source directory:
+> **Environment:** Ubuntu 22.04 LTS with ROS 2 Humble Hawksbill is the recommended and tested platform.
 
-   ```bash
-   mkdir -p ~/ros2_ws/src
-   cd ~/ros2_ws/src
-   git clone https://github.com/DineshMoorthy007/Drone-State-Navigation-Sim.git
-   ```
+### Step 1 — Source your ROS 2 Humble installation
 
-2. **Install ROS2 package dependencies** using `rosdep`:
+Open a terminal and source the ROS 2 global setup file:
 
-   ```bash
-   cd ~/ros2_ws
-   rosdep install --from-paths src --ignore-src -r -y
-   ```
+```bash
+source /opt/ros/humble/setup.bash
+```
 
-3. **Build the workspace**:
+To make this permanent, append it to your shell configuration:
 
-   ```bash
-   cd ~/ros2_ws
-   colcon build --symlink-install
-   ```
+```bash
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+```
 
-4. **Source the workspace** overlay:
+### Step 2 — Create a colcon workspace and clone the repository
 
-   ```bash
-   source ~/ros2_ws/install/setup.bash
-   ```
+```bash
+mkdir -p ~/drone_ws/src
+cd ~/drone_ws/src
+git clone https://github.com/DineshMoorthy007/Drone-State-Navigation-Sim.git
+```
+
+### Step 3 — Install dependencies with rosdep
+
+```bash
+cd ~/drone_ws
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+### Step 4 — Build the workspace
+
+```bash
+cd ~/drone_ws
+colcon build --symlink-install
+```
+
+### Step 5 — Source the local workspace overlay
+
+```bash
+source ~/drone_ws/install/setup.bash
+```
+
+To avoid repeating this in every new terminal, append it to your shell configuration (after the global ROS 2 source line):
+
+```bash
+echo "source ~/drone_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+```
 
 ---
 
@@ -84,12 +114,12 @@ ros2 topic echo /drone/state
 To visualize the drone's pose and trajectory in RViz:
 
 ```bash
-rviz2 -d ~/ros2_ws/src/<your-repo-directory>/config/drone_viz.rviz
+rviz2 -d ~/drone_ws/src/<your-repo-directory>/config/drone_viz.rviz
 ```
 
 > Replace `<your-repo-directory>` with the name of the directory you cloned the repository into (default: `Drone-State-Navigation-Sim`).
 
-> **Note:** Always source the workspace (`source ~/ros2_ws/install/setup.bash`) in every new terminal session before running any ROS2 commands.
+> **Note:** Always source the workspace (`source ~/drone_ws/install/setup.bash`) in every new terminal session before running any ROS2 commands.
 
 ---
 
