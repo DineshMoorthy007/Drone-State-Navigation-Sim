@@ -1,58 +1,137 @@
-# Autonomous Drone Landing System
+# 🚁 Drone State Navigation & Autonomous Landing Sim
 
 [![ROS 2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
-[![Gazebo](https://img.shields.io/badge/Gazebo-Simulation-F58113)](https://gazebosim.org/)
+[![Gazebo](https://img.shields.io/badge/Gazebo-Harmonic%2FIgnition-F58113)](https://gazebosim.org/)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.x-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
 [![License](https://img.shields.io/badge/License-MIT-brightgreen)](LICENSE)
 
-A 3D simulation environment that demonstrates a fully autonomous drone tracking and landing precisely on the **center of a moving base**. Built with **ROS2** and **Gazebo**, the system employs a strict four-state machine — Wandering, Searching, Landing, and Dwelling — combined with precision control algorithms to achieve stable, repeatable autonomous landings in dynamic environments.
+A **fully autonomous drone flight stack** built from scratch using **ROS 2 (Python)** and **Gazebo Harmonic/Ignition**. This simulation features a custom physics world, a complete computer vision pipeline with a live Heads-Up Display (HUD), finite state machine (FSM) logic, visual servoing for precision landing, and a dynamic Command & Control (C2) teleporter — all orchestrated across four isolated, composable ROS 2 nodes.
 
 ---
 
-## Table of Contents
+## 📋 Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-- [System Architecture](#system-architecture)
-- [Future Improvements](#future-improvements)
-
----
-
-## Prerequisites
-
-Ensure the following software is installed on your system before proceeding:
-
-- **ROS2** (Humble Hawksbill or later recommended)
-  - [ROS2 Installation Guide](https://docs.ros.org/en/humble/Installation.html)
-- **Gazebo** (Classic 11 or Gazebo Ignition, compatible with your ROS2 distribution)
-  - [Gazebo Installation Guide](https://gazebosim.org/docs)
-- **colcon** build tool
-  ```bash
-  sudo apt install python3-colcon-common-extensions
-  ```
-- **Python 3.8+** (included with most ROS2 distributions)
-- **Git**
-  ```bash
-  sudo apt install git
-  ```
-- Standard ROS2 dependencies (e.g., `rclpy`, `geometry_msgs`, `sensor_msgs`, `nav_msgs`)
+- [🏗️ System Architecture](#️-system-architecture)
+- [⚙️ Prerequisites](#️-prerequisites)
+- [🛠️ Installation & Build](#️-installation--build)
+- [🚀 Usage / How to Run](#-usage--how-to-run)
 
 ---
 
-## Installation
+## 🏗️ System Architecture
 
-> **Environment:** Ubuntu 22.04 LTS with ROS 2 Humble Hawksbill is the recommended and tested platform.
+The system is decomposed into **four isolated ROS 2 nodes**, each with a single, well-defined responsibility. They communicate exclusively via ROS 2 topics and services, ensuring clean separation of concerns and independent testability.
 
-### Step 1 — Source your ROS 2 Humble installation
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ROS 2 Node Architecture                             │
+│                                                                             │
+│  ┌──────────────────────┐        ┌──────────────────────┐                  │
+│  │   Mission Commander  │◄──────►│   Flight Controller  │                  │
+│  │     (The Brain)      │  FSM   │     (The Muscle)     │                  │
+│  │  Finite State Machine│ state  │  Visual Servoing &   │                  │
+│  │  TAKEOFF→WANDERING   │        │  Velocity Commands   │                  │
+│  │  →SEARCHING→LANDING  │        └──────────┬───────────┘                  │
+│  │  →DWELLING           │                   │ /cmd_vel                     │
+│  └──────────────────────┘                   ▼                              │
+│                                   ┌─────────────────┐                      │
+│  ┌──────────────────────┐         │  Gazebo Sim /   │                      │
+│  │   Target Detector    │────────►│  ros_gz_bridge  │                      │
+│  │     (The Eyes)       │  HUD    │                 │                      │
+│  │  OpenCV HSV Masking  │         └─────────────────┘                      │
+│  │  Centroid Detection  │                                                   │
+│  │  Live HUD Overlay    │                                                   │
+│  └──────────────────────┘                                                   │
+│                                                                             │
+│  ┌──────────────────────┐                                                   │
+│  │   Base Teleporter    │                                                   │
+│  │  (Command & Control) │                                                   │
+│  │  Multi-threaded CLI  │                                                   │
+│  │  JSON UserCommands   │                                                   │
+│  └──────────────────────┘                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-Open a terminal and source the ROS 2 global setup file:
+---
+
+### 🧠 Node 1 — Mission Commander *(The Brain)*
+
+The central orchestrator of the entire flight stack. It implements a **strict Finite State Machine (FSM)** that governs all high-level mission logic through five mutually exclusive operational modes:
+
+| State | Description |
+|---|---|
+| `TAKEOFF` | Commands the drone to climb to a safe operational altitude before any mission logic executes. |
+| `WANDERING` | Executes a time-boxed interior sweep pattern to gain spatial awareness of the environment. Altitude-locked; no target acquisition occurs in this state. |
+| `SEARCHING` | Activates the target detection pipeline and transitions the drone into an **Archimedean spiral search algorithm** to systematically cover the 10×10 m geofence. |
+| `LANDING` | Engages the visual servoing controller upon target detection. The FSM locks the drone into a precision descent profile guided by real-time pixel-error feedback. |
+| `DWELLING` | Confirms a stable, centred touchdown via a precision timer. Holds position until the landing mission is officially declared complete. |
+
+**Key design principles:**
+- **Altitude-locked state isolation** — state transitions are only permitted when the drone satisfies strict altitude thresholds, preventing mid-maneuver mode switches.
+- **Precise internal timers** — each timed state (Wandering, Dwelling) uses ROS 2 wall timers for deterministic, repeatable behaviour independent of simulation speed.
+
+---
+
+### 💪 Node 2 — Flight Controller *(The Muscle)*
+
+Translates high-level FSM commands and visual feedback into low-level `geometry_msgs/Twist` velocity commands published to the drone. Key algorithms include:
+
+- **Visual Servoing** — Computes X/Y/Z body-frame velocities directly from the pixel-space error between the detected target centroid and the image centre. Proportional gains are tuned to ensure smooth, oscillation-free convergence.
+- **Sine-Wave Interior Sweep** — During `WANDERING`, the drone executes a smooth sinusoidal lateral sweep to maximise sensor coverage within the bounded area.
+- **Archimedean Spiral Search** — During `SEARCHING`, an outward-expanding spiral ensures exhaustive, non-redundant coverage of the geofence until the target is acquired.
+- **High-Altitude Deadbands** — Velocity commands are suppressed within configurable deadband thresholds at altitude to prevent oscillatory corrections from small sensor noise.
+- **2.5-Second "Deep Escape" Logic** — Detects and resolves boundary-chattering conditions on the 10×10 m geofence by issuing a sustained counter-velocity command, preventing the drone from becoming trapped oscillating along a boundary.
+
+---
+
+### 👁️ Node 3 — Target Detector *(The Eyes)*
+
+A fully self-contained **OpenCV computer vision pipeline** that processes raw camera feeds from the Gazebo simulation:
+
+- Ingests raw image data from the simulated downward-facing camera via the `ros_gz_bridge`.
+- Applies **HSV colour-space masking** to robustly isolate the landing pad under varying simulated lighting conditions.
+- Computes the **target centroid** from the largest detected contour and publishes its pixel coordinates.
+- Renders and publishes a **dynamic, time-synchronised Heads-Up Display (HUD)** back into the Gazebo UI, overlaying bounding boxes, centroid markers, state annotations, and pixel-error vectors for real-time diagnostics.
+
+---
+
+### 📡 Node 4 — Base Teleporter *(Command & Control)*
+
+An interactive Command & Control interface for dynamic mission management:
+
+- Implements a **multi-threaded terminal interface** that accepts operator commands without blocking the ROS 2 spin loop.
+- Utilises Gazebo's **`UserCommands` plugin** with strict, validated **JSON payloads** to teleport the landing pad to arbitrary positions within the geofence at runtime.
+- **Actively blocks** relocation requests during critical flight phases (e.g., `LANDING`, `DWELLING`) and paused simulation states, preventing unsafe mid-maneuver target displacement.
+- Provides real-time feedback to the operator on command acceptance, rejection, and current FSM state.
+
+---
+
+## ⚙️ Prerequisites
+
+The following software must be installed on your system before building this project.
+
+| Dependency | Version | Notes |
+|---|---|---|
+| **Ubuntu** | 22.04 LTS (Jammy Jellyfish) | Recommended and tested platform |
+| **ROS 2** | Humble Hawksbill | [Installation Guide](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html) |
+| **Gazebo** | Harmonic (formerly Ignition) | [Installation Guide](https://gazebosim.org/docs/harmonic/install_ubuntu/) |
+| **ros_gz_bridge** | Compatible with your ROS 2 / Gazebo versions | Bridges ROS 2 topics to Gazebo transport |
+| **OpenCV** | 4.x | `sudo apt install python3-opencv` |
+| **colcon** | Latest | `sudo apt install python3-colcon-common-extensions` |
+| **rosdep** | Latest | `sudo apt install python3-rosdep` |
+
+---
+
+## 🛠️ Installation & Build
+
+### Step 1 — Source your ROS 2 installation
 
 ```bash
 source /opt/ros/humble/setup.bash
 ```
 
-To make this permanent, append it to your shell configuration:
+To make this permanent across all terminal sessions:
 
 ```bash
 echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
@@ -67,7 +146,7 @@ cd ~/drone_ws/src
 git clone https://github.com/DineshMoorthy007/Drone-State-Navigation-Sim.git
 ```
 
-### Step 3 — Install dependencies with rosdep
+### Step 3 — Install ROS dependencies with rosdep
 
 ```bash
 cd ~/drone_ws
@@ -82,115 +161,54 @@ cd ~/drone_ws
 colcon build --symlink-install
 ```
 
-### Step 5 — Source the local workspace overlay
+### Step 5 — Source the workspace overlay
 
 ```bash
 source ~/drone_ws/install/setup.bash
 ```
 
-To avoid repeating this in every new terminal, append it to your shell configuration (after the global ROS 2 source line):
+Append to your shell configuration to avoid repeating this in every new terminal:
 
 ```bash
 echo "source ~/drone_ws/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
----
-
-## Usage
-
-Launch the full simulation (Gazebo environment + drone state machine):
-
-```bash
-ros2 launch drone_landing_sim drone_landing.launch.py
-```
-
-To monitor the current state machine mode in real time:
-
-```bash
-ros2 topic echo /drone/state
-```
-
-To visualize the drone's pose and trajectory in RViz:
-
-```bash
-rviz2 -d ~/drone_ws/src/<your-repo-directory>/config/drone_viz.rviz
-```
-
-> Replace `<your-repo-directory>` with the name of the directory you cloned the repository into (default: `Drone-State-Navigation-Sim`).
-
-> **Note:** Always source the workspace (`source ~/drone_ws/install/setup.bash`) in every new terminal session before running any ROS2 commands.
+> **Note:** Always ensure both the global ROS 2 setup and the workspace overlay are sourced before executing any `ros2` commands.
 
 ---
 
-## System Architecture
+## 🚀 Usage / How to Run
 
-The core of the system is a **strict four-state machine**. Each state has a well-defined entry condition, behaviour, and exit condition. The drone transitions through states sequentially based on sensor feedback and internal timers.
+### Launch the Full Simulation Stack
 
-```
-┌──────────────┐     Stable altitude reached     ┌──────────────┐
-│  WANDERING   │ ──────────────────────────────► │  SEARCHING   │
-│   (30 s)     │                                  │              │
-└──────────────┘                                  └──────┬───────┘
-                                                         │ Base detected
-                                                         ▼
-                                                  ┌──────────────┐
-                                                  │   LANDING    │
-                                                  │              │
-                                                  └──────┬───────┘
-                                                         │ Centered on base
-                                                         ▼
-                                                  ┌──────────────┐
-                                                  │   DWELLING   │
-                                                  │   (5 s)      │
-                                                  └──────────────┘
+This command starts the Gazebo world, spawns the drone model, and brings up all four ROS 2 nodes (Mission Commander, Flight Controller, Target Detector) in a single coordinated launch:
+
+```bash
+ros2 launch auto_landing auto_landing.launch.py
 ```
 
-### State 1 — Wandering Mode
-
-- **Trigger:** System start-up.
-- **Behaviour:**
-  - The drone executes a controlled **vertical take-off** to a predefined fixed altitude.
-  - Once the target altitude is confirmed stable, a **30-second exploration timer** begins.
-  - During this period the drone navigates the environment using a smooth, efficient coverage algorithm (e.g., lawnmower or spiral sweep) to build spatial awareness.
-- **Key constraint:** The drone does **not** calculate the base position or initiate any landing logic during this mode. This ensures the drone is fully stabilised and has adequate altitude before committing to a search.
-- **Exit condition:** The 30-second timer expires → transition to **Searching Mode**.
-
-### State 2 — Searching Mode
-
-- **Trigger:** Expiry of the Wandering Mode timer.
-- **Behaviour:**
-  - The drone activates its **base-detection pipeline** (camera + image processing / sensor fusion).
-  - It manoeuvres systematically to maximise sensor coverage while continuously scanning for the moving base.
-  - Heading and velocity commands are updated at each control cycle based on the latest sensor readings.
-- **Exit condition:** The moving base is detected and its position is confirmed → transition to **Landing Mode**.
-
-### State 3 — Landing Mode
-
-- **Trigger:** Successful detection of the moving base.
-- **Behaviour:**
-  - The drone switches to a **precision approach controller**.
-  - It continuously tracks the **real-time position of the moving base** and adjusts horizontal and vertical velocity to converge on the base's centre point.
-  - A predictive or reactive control strategy compensates for base movement during the descent.
-  - Descent rate is modulated to ensure the drone reaches the centre of the base — not merely anywhere on it.
-- **Exit condition:** The drone's position matches the base centre within a defined tolerance and touchdown is confirmed → transition to **Dwelling Mode**.
-
-### State 4 — Dwelling Mode
-
-- **Trigger:** Confirmed touchdown on the centre of the moving base.
-- **Behaviour:**
-  - The drone holds its landed position while a **5-second confirmation timer** runs.
-  - This dwell period validates that the landing was stable and not a transient contact.
-  - All flight controllers are kept active at low power to counteract any residual disturbances from base motion.
-- **Exit condition:** The 5-second timer expires → landing mission **complete**.
+Once launched, the simulation will proceed autonomously through the full FSM sequence: **TAKEOFF → WANDERING → SEARCHING → LANDING → DWELLING**.
 
 ---
 
-## Future Improvements
+### Start the Command & Control Teleporter
 
-- **Multi-drone coordination:** Extend the state machine to support swarm scenarios where multiple drones take off, search, and land on separate moving bases simultaneously.
-- **Dynamic obstacle avoidance:** Integrate real-time LiDAR-based collision avoidance during Wandering and Searching modes.
-- **Adaptive landing controller:** Replace the fixed-gain descent controller with a model-predictive controller (MPC) to improve robustness against faster or less predictable base motion.
-- **Real hardware deployment:** Port the ROS2 nodes to a physical drone platform (e.g., PX4 / ArduPilot via MAVROS2) for hardware-in-the-loop (HIL) and real-world testing.
-- **Machine learning integration:** Train a vision-based policy (e.g., using reinforcement learning) to replace the hand-crafted search pattern with a learned, more efficient exploration strategy.
-- **Ground truth benchmarking:** Add automated test scenarios in Gazebo to record landing precision metrics (centre offset, landing time, success rate) across varied base speeds and trajectories.
+In a **separate terminal** (with the workspace sourced), launch the interactive Base Teleporter to dynamically reposition the landing pad during the mission:
+
+```bash
+ros2 run auto_landing base_teleporter
+```
+
+The terminal will display an interactive prompt. Follow the on-screen instructions to enter target coordinates. The teleporter will automatically reject commands during critical flight phases (`LANDING`, `DWELLING`) to ensure flight safety.
+
+---
+
+> **Tip:** Open additional terminals to inspect the live ROS 2 topic graph and monitor system state:
+> ```bash
+> # Monitor the FSM state in real time
+> ros2 topic echo /drone/state
+>
+> # Inspect the full topic graph
+> ros2 topic list
+> ```
