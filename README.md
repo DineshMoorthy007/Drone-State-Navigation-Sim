@@ -1,25 +1,24 @@
-# 🚁 Drone State Navigation & Autonomous Landing Sim
+# Drone State Navigation & Autonomous Landing Sim
 
 [![ROS 2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
 [![Gazebo](https://img.shields.io/badge/Gazebo-Harmonic%2FIgnition-F58113)](https://gazebosim.org/)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
-[![License](https://img.shields.io/badge/License-MIT-brightgreen)](LICENSE)
 
 A **fully autonomous drone flight stack** built from scratch using **ROS 2 (Python)** and **Gazebo Harmonic/Ignition**. This simulation features a custom physics world, a complete computer vision pipeline with a live Heads-Up Display (HUD), finite state machine (FSM) logic, visual servoing for precision landing, and a dynamic Command & Control (C2) teleporter — all orchestrated across four isolated, composable ROS 2 nodes.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [🏗️ System Architecture](#️-system-architecture)
-- [⚙️ Prerequisites](#️-prerequisites)
-- [🛠️ Installation & Build](#️-installation--build)
-- [🚀 Usage / How to Run](#-usage--how-to-run)
+- [System Architecture](#️-system-architecture)
+- [Prerequisites](#️-prerequisites)
+- [Installation & Build](#️-installation--build)
+- [Usage / How to Run](#-usage--how-to-run)
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 The system is decomposed into **four isolated ROS 2 nodes**, each with a single, well-defined responsibility. They communicate exclusively via ROS 2 topics and services, ensuring clean separation of concerns and independent testability.
 
@@ -27,19 +26,19 @@ The system is decomposed into **four isolated ROS 2 nodes**, each with a single,
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         ROS 2 Node Architecture                             │
 │                                                                             │
-│  ┌──────────────────────┐        ┌──────────────────────┐                  │
-│  │   Mission Commander  │◄──────►│   Flight Controller  │                  │
-│  │     (The Brain)      │  FSM   │     (The Muscle)     │                  │
-│  │  Finite State Machine│ state  │  Visual Servoing &   │                  │
-│  │  TAKEOFF→WANDERING   │        │  Velocity Commands   │                  │
-│  │  →SEARCHING→LANDING  │        └──────────┬───────────┘                  │
-│  │  →DWELLING           │                   │ /cmd_vel                     │
-│  └──────────────────────┘                   ▼                              │
-│                                   ┌─────────────────┐                      │
-│  ┌──────────────────────┐         │  Gazebo Sim /   │                      │
-│  │   Target Detector    │────────►│  ros_gz_bridge  │                      │
-│  │     (The Eyes)       │  HUD    │                 │                      │
-│  │  OpenCV HSV Masking  │         └─────────────────┘                      │
+│  ┌──────────────────────┐        ┌──────────────────────┐                   │
+│  │   Mission Commander  │◄──────►│   Flight Controller  │                   │
+│  │     (The Brain)      │  FSM   │     (The Muscle)     │                   │
+│  │  Finite State Machine│ state  │  Visual Servoing &   │                   │
+│  │  TAKEOFF→WANDERING   │        │  Velocity Commands   │                   │
+│  │  →SEARCHING→LANDING  │        └──────────┬───────────┘                   │
+│  │  →DWELLING           │                   │ /cmd_vel                      │
+│  └──────────────────────┘                   ▼                               │
+│                                   ┌─────────────────┐                       │
+│  ┌──────────────────────┐         │  Gazebo Sim /   │                       │
+│  │   Target Detector    │────────►│  ros_gz_bridge  │                       │
+│  │     (The Eyes)       │  HUD    │                 │                       │
+│  │  OpenCV HSV Masking  │         └─────────────────┘                       │
 │  │  Centroid Detection  │                                                   │
 │  │  Live HUD Overlay    │                                                   │
 │  └──────────────────────┘                                                   │
@@ -55,7 +54,7 @@ The system is decomposed into **four isolated ROS 2 nodes**, each with a single,
 
 ---
 
-### 🧠 Node 1 — Mission Commander *(The Brain)*
+### Node 1 — Mission Commander *(The Brain)*
 
 The central orchestrator of the entire flight stack. It implements a **strict Finite State Machine (FSM)** that governs all high-level mission logic through five mutually exclusive operational modes:
 
@@ -73,7 +72,7 @@ The central orchestrator of the entire flight stack. It implements a **strict Fi
 
 ---
 
-### 💪 Node 2 — Flight Controller *(The Muscle)*
+### Node 2 — Flight Controller *(The Muscle)*
 
 Translates high-level FSM commands and visual feedback into low-level `geometry_msgs/Twist` velocity commands published to the drone. Key algorithms include:
 
@@ -85,7 +84,7 @@ Translates high-level FSM commands and visual feedback into low-level `geometry_
 
 ---
 
-### 👁️ Node 3 — Target Detector *(The Eyes)*
+### Node 3 — Target Detector *(The Eyes)*
 
 A fully self-contained **OpenCV computer vision pipeline** that processes raw camera feeds from the Gazebo simulation:
 
@@ -96,7 +95,7 @@ A fully self-contained **OpenCV computer vision pipeline** that processes raw ca
 
 ---
 
-### 📡 Node 4 — Base Teleporter *(Command & Control)*
+### Node 4 — Base Teleporter *(Command & Control)*
 
 An interactive Command & Control interface for dynamic mission management:
 
@@ -107,7 +106,7 @@ An interactive Command & Control interface for dynamic mission management:
 
 ---
 
-## ⚙️ Prerequisites
+## Prerequisites
 
 The following software must be installed on your system before building this project.
 
@@ -123,7 +122,7 @@ The following software must be installed on your system before building this pro
 
 ---
 
-## 🛠️ Installation & Build
+## Installation & Build
 
 ### Step 1 — Source your ROS 2 installation
 
@@ -178,7 +177,7 @@ source ~/.bashrc
 
 ---
 
-## 🚀 Usage / How to Run
+## Usage / How to Run
 
 ### Launch the Full Simulation Stack
 
