@@ -1,0 +1,12 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ROS 2 build folders
+build/
+install/
+log/
+
+# OS hidden files
+.DS_Store

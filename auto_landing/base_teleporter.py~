@@ -1,0 +1,87 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import threading
+import subprocess
+
+class BaseTeleporter(Node):
+    def __init__(self):
+        super().__init__('base_teleporter')
+        self.current_state = "UNKNOWN"
+        
+        self.sub = self.create_subscription(String, '/mission_state', self.state_callback, 10)
+        
+        self.input_thread = threading.Thread(target=self.user_input_loop)
+        self.input_thread.daemon = True
+        self.input_thread.start()
+
+    def state_callback(self, msg):
+        self.current_state = msg.data
+
+    def user_input_loop(self):
+        print("\n==================================")
+        print("   BASE TELEPORTER ONLINE")
+        print("==================================")
+        print("Boundary Limit: -9.5 to 9.5")
+        print("Type coordinates (e.g., '5 -3') or 'quit' to exit.")
+        
+        while True:
+            try:
+                user_input = input("\nEnter new X Y: ")
+                if user_input.lower() in ['q', 'quit', 'exit']:
+                    print("Shutting down teleporter...")
+                    rclpy.shutdown()
+                    break
+                
+                parts = user_input.split()
+                if len(parts) != 2:
+                    print("[ERROR] Please enter exactly two numbers separated by a space (e.g., '4.5 -2').")
+                    continue
+                    
+                x = float(parts)
+                y = float(parts)
+                
+                self.attempt_teleport(x, y)
+                
+            except ValueError:
+                print("[ERROR] Invalid input. Please enter numbers.")
+            except Exception as e:
+                pass # Suppress thread crash on shutdown
+
+    def attempt_teleport(self, x, y):
+        if abs(x) > 9.5 or abs(y) > 9.5:
+            print(f"[REJECTED] Coordinates ({x}, {y}) are outside the 10x10 boundary!")
+            return
+            
+        if self.current_state in ["LANDING", "DWELLING"]:
+            print(f"[REJECTED] Drone is currently in {self.current_state} mode. Wait for takeoff!")
+            return
+            
+        print(f"[APPROVED] Relocating base to X: {x}, Y: {y}...")
+        
+        gz_cmd = [
+            'gz', 'service', '-s', '/world/landing_world/set_pose',
+            '--reqtype', 'gz.msgs.Pose',
+            '--reptype', 'gz.msgs.Boolean',
+            '--timeout', '2000',
+            '--req', f'name: "landing_base", position: {{x: {x}, y: {y}, z: 0.005}}'
+        ]
+        
+        try:
+            subprocess.run(gz_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("[SUCCESS] Base moved!")
+        except subprocess.CalledProcessError:
+            print("[ERROR] Failed to move base. Is Gazebo running?")
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = BaseTeleporter()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+
+if __name__ == '__main__':
+    main()
