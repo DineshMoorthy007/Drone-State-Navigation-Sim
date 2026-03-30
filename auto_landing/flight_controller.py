@@ -23,6 +23,10 @@ class FlightController(Node):
         
         self.escaping_wall_until = 0.0 
         
+        self.search_target_x = 0.0
+        self.search_target_y = 0.0
+        self.search_phase = "SWEEP_Y"
+        
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 3.0
@@ -69,28 +73,52 @@ class FlightController(Node):
             twist.linear.z = 0.6 
             twist.angular.z = 0.0
 
-        elif self.current_state in ["WANDERING", "SEARCHING"]:
+        elif self.current_state == "WANDERING":
             if abs(self.current_x) > BOUNDARY or abs(self.current_y) > BOUNDARY:
                 if current_time >= self.escaping_wall_until:
                     self.escaping_wall_until = current_time + 2.5
-                    if self.current_state == "SEARCHING":
-                        self.time_entered_search = current_time + 2.5 
-
+                    
             if current_time < self.escaping_wall_until:
                 angle_to_center = math.atan2(-self.current_y, -self.current_x)
                 angle_error = (angle_to_center - self.current_yaw + math.pi) % (2 * math.pi) - math.pi
                 twist.linear.x = 0.6
                 twist.angular.z = angle_error * 2.5
             else:
-                if self.current_state == "WANDERING":
-                    twist.linear.x = 0.6
-                    twist.angular.z = 0.5 * math.sin(current_time * 0.7) 
-                
-                elif self.current_state == "SEARCHING":
-                    time_in_search = current_time - self.time_entered_search
-                    spiral_radius = max(0.2, time_in_search * 0.1) 
-                    twist.linear.x = 0.5 
-                    twist.angular.z = twist.linear.x / spiral_radius
+                twist.linear.x = 0.6
+                twist.angular.z = 0.5 * math.sin(current_time * 0.7) 
+
+        elif self.current_state == "SEARCHING":
+            time_in_search = current_time - self.time_entered_search
+            
+            if time_in_search < 0.2:
+                self.search_target_x = round(self.current_x / 1.5) * 1.5
+                self.search_target_y = 4.0 if self.current_y < 0 else -4.0
+                self.search_phase = "SWEEP_Y"
+
+            target_x = self.search_target_x
+            target_y = self.search_target_y if self.search_phase == "SWEEP_Y" else self.current_y
+
+            distance_to_target = math.hypot(target_x - self.current_x, target_y - self.current_y)
+
+            if distance_to_target < 0.6:
+                if self.search_phase == "SWEEP_Y":
+                    self.search_phase = "SHIFT_X"
+                    self.search_target_x += 1.5
+                    if self.search_target_x > 4.5: 
+                        self.search_target_x = -4.5
+                    self.search_target_y *= -1.0 
+                else:
+                    self.search_phase = "SWEEP_Y"
+
+            angle_to_target = math.atan2(target_y - self.current_y, target_x - self.current_x)
+            angle_error = (angle_to_target - self.current_yaw + math.pi) % (2 * math.pi) - math.pi
+            
+            if abs(angle_error) > 0.5:
+                twist.linear.x = 0.2
+                twist.angular.z = angle_error * 2.5
+            else:
+                twist.linear.x = 0.8 
+                twist.angular.z = angle_error * 1.5
 
         elif self.current_state == "LANDING":
             if self.current_z < 1.0:
@@ -102,11 +130,9 @@ class FlightController(Node):
                 Kp = 0.004
                 err_x = self.error_x if abs(self.error_x) > 10 else 0.0
                 err_y = self.error_y if abs(self.error_y) > 10 else 0.0
-
                 twist.linear.x = -err_y * Kp
                 twist.linear.y = -err_x * Kp
                 twist.angular.z = 0.0
-                
                 pixel_distance = math.sqrt(err_x**2 + err_y**2)
                 
                 if pixel_distance < 40:
